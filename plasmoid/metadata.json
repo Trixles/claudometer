@@ -1,0 +1,15 @@
+{
+    "KPlugin": {
+        "Id": "com.github.trixles.claudometer",
+        "Name": "Claudometer",
+        "Description": "Claude AI usage limits at a glance: session and weekly meters on your panel.",
+        "Icon": "speedometer",
+        "Category": "System Information",
+        "Authors": [{"Email": "tylermcclurg@gmail.com", "Name": "Trixles"}],
+        "License": "MIT",
+        "Version": "1.0.0",
+        "Website": "https://github.com/Trixles/claudometer"
+    },
+    "X-Plasma-API-Minimum-Version": "6.0",
+    "KPackageStructure": "Plasma/Applet"
+}

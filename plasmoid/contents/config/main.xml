@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Configuration schema. Plasma persists these per-widget-instance and
+     exposes them to QML as Plasmoid.configuration.<name>. Each entry needs
+     a matching cfg_<name> alias in the config page QML. -->
+<kcfg xmlns="http://www.kde.org/standards/kcfg/1.0"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="http://www.kde.org/standards/kcfg/1.0
+      http://www.kde.org/standards/kcfg/1.0/kcfg.xsd">
+  <kcfgfile name=""/>
+
+  <group name="General">
+    <entry name="updateInterval" type="Int">
+      <label>Polling interval in seconds. The usage endpoint is rate-limited
+      and the data changes slowly, so the default is deliberately gentle.</label>
+      <default>300</default>
+      <min>60</min>
+      <max>1800</max>
+    </entry>
+    <entry name="showAllBuckets" type="Bool">
+      <label>Show per-model usage buckets in the popup, not just Session and Week.</label>
+      <default>false</default>
+    </entry>
+    <entry name="notificationsEnabled" type="Bool">
+      <label>Send desktop notifications when crossing thresholds.</label>
+      <default>true</default>
+    </entry>
+    <entry name="warnThreshold" type="Int">
+      <label>Warning threshold in percent.</label>
+      <default>70</default>
+      <min>1</min>
+      <max>100</max>
+    </entry>
+    <entry name="critThreshold" type="Int">
+      <label>Critical threshold in percent.</label>
+      <default>90</default>
+      <min>1</min>
+      <max>100</max>
+    </entry>
+  </group>
+
+  <group name="Appearance">
+    <entry name="useCustomColors" type="Bool">
+      <label>Use custom colors instead of the system theme.</label>
+      <default>false</default>
+    </entry>
+    <entry name="colorNormal" type="Color">
+      <default>#3daee9</default>
+    </entry>
+    <entry name="colorWarning" type="Color">
+      <default>#f67400</default>
+    </entry>
+    <entry name="colorCritical" type="Color">
+      <default>#da4453</default>
+    </entry>
+  </group>
+</kcfg>

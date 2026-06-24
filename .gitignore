@@ -1,0 +1,9 @@
+# Python
+__pycache__/
+*.pyc
+
+# AI assistant session files
+.claude/
+CLAUDE.md
+HANDOFF.md
+handoff.md
