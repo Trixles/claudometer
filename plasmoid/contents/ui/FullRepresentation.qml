@@ -74,23 +74,40 @@ PlasmaExtras.Representation {
                     PlasmaComponents3.Label {
                         text: modelData.label
                         font.weight: Font.Medium
+                        color: root.panelTextColor()
                     }
                     Item { Layout.fillWidth: true }
                     PlasmaComponents3.Label {
                         text: Math.round(modelData.pct) + "%"
                         font.weight: Font.Bold
-                        color: root.barColor(modelData.pct)
+                        color: root.panelTextColor()
                     }
                 }
-                PlasmaComponents3.ProgressBar {
+                // Hand-drawn bar so the popup carries the same colors as the
+                // panel (faint track + colored fill), instead of the theme-accent
+                // ProgressBar: bars colored, text white → visually coherent.
+                Item {
                     Layout.fillWidth: true
-                    from: 0; to: 100
-                    value: modelData.pct
+                    height: Kirigami.Units.gridUnit * 0.5
+                    Rectangle {
+                        anchors.fill: parent
+                        radius: 4
+                        color: root.panelTextColor()
+                        opacity: 0.15
+                    }
+                    Rectangle {
+                        height: parent.height
+                        radius: 4
+                        width: parent.width * Math.min(1, modelData.pct / 100)
+                        color: root.barColor(modelData.pct, root.normalColorFor(modelData.id))
+                        Behavior on width { NumberAnimation { duration: 300 } }
+                    }
                 }
                 PlasmaComponents3.Label {
                     text: root.fmtCountdown(modelData.resets_at)
                     visible: text !== ""
                     opacity: 0.7
+                    color: root.panelTextColor()
                     font: Kirigami.Theme.smallFont
                 }
                 Item { height: Kirigami.Units.smallSpacing }  // block gap

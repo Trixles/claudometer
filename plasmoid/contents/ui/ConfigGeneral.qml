@@ -9,7 +9,6 @@ import org.kde.kirigami as Kirigami
 
 Kirigami.FormLayout {
     property alias cfg_updateInterval: intervalSpin.value
-    property alias cfg_showAllBuckets: allBucketsCheck.checked
     property alias cfg_notificationsEnabled: notifyCheck.checked
     property alias cfg_warnThreshold: warnSpin.value
     property alias cfg_critThreshold: critSpin.value
@@ -21,12 +20,6 @@ Kirigami.FormLayout {
         from: 60; to: 1800; stepSize: 60
         textFromValue: (v) => i18np("%1 minute", "%1 minutes", Math.round(v / 60))
         valueFromText: (t) => Math.max(1, Math.round(parseFloat(t) || 1)) * 60
-    }
-
-    QQC2.CheckBox {
-        id: allBucketsCheck
-        Kirigami.FormData.label: i18n("Details popup:")
-        text: i18n("Show per-model usage buckets")
     }
 
     Item { Kirigami.FormData.isSection: true }

@@ -54,23 +54,32 @@ PlasmoidItem {
         return null
     }
 
-    // Buckets shown in the popup: all of them, or just the two headliners.
-    readonly property var visibleBuckets: Plasmoid.configuration.showAllBuckets
-        ? buckets
-        : buckets.filter(b => b.id === "five_hour" || b.id === "seven_day")
+    // Buckets shown in the popup: just the two headliners (session + week).
+    readonly property var visibleBuckets:
+        buckets.filter(b => b.id === "five_hour" || b.id === "seven_day")
 
     // ---- colors -----------------------------------------------------------
-    // Native by default: follow the Plasma theme. Custom colors are opt-in.
-    function barColor(pct) {
+    // The classic palette (green/blue/orange/red/white), always applied — every
+    // color is user-editable in settings, so there's no separate theme mode.
+    // `normal` is the sub-warning fill and differs per bar (session green vs
+    // weekly blue); warning/critical are shared once a bar crosses its threshold.
+    function barColor(pct, normal) {
         const cfg = Plasmoid.configuration
-        if (pct >= cfg.critThreshold)
-            return cfg.useCustomColors ? cfg.colorCritical
-                                       : Kirigami.Theme.negativeTextColor
-        if (pct >= cfg.warnThreshold)
-            return cfg.useCustomColors ? cfg.colorWarning
-                                       : Kirigami.Theme.neutralTextColor
-        return cfg.useCustomColors ? cfg.colorNormal
-                                   : Kirigami.Theme.highlightColor
+        if (pct >= cfg.critThreshold) return cfg.colorCritical
+        if (pct >= cfg.warnThreshold) return cfg.colorWarning
+        return normal
+    }
+
+    // The per-bar "normal" color: green for the 5h session, blue for the weekly
+    // limit (and any extra per-model bucket).
+    function normalColorFor(id) {
+        const cfg = Plasmoid.configuration
+        return id === "five_hour" ? cfg.colorSession : cfg.colorWeekly
+    }
+
+    // Panel label color (the countdown + percentage text).
+    function panelTextColor() {
+        return Plasmoid.configuration.colorText
     }
 
     // ---- fetching ---------------------------------------------------------
@@ -188,6 +197,22 @@ PlasmoidItem {
         if (h < 48) return i18n("resets in %1h %2m", h, min % 60)
         return i18n("resets in %1d %2h", Math.floor(h / 24), h % 24)
     }
+    // Short panel form — time left on a limit, largest unit, rounded UP:
+    // "14m" / "3h" / "5d". 4h30m → "5h"; drops to "4h" only once under 4h00m
+    // (same for minutes and days). Single ceil per unit keeps it monotonic — it
+    // never skips a value ticking down. Uses root.now so the panel ticks for
+    // free, no re-fetch.
+    function fmtCompactCountdown(resetsAt) {
+        if (!resetsAt) return ""
+        const ms = new Date(resetsAt).getTime() - now
+        if (isNaN(ms)) return ""
+        if (ms <= 0) return i18n("0m")
+        const min = ms / 60000            // minutes left (fractional)
+        if (min < 60) return i18n("%1m", Math.ceil(min))     // 1m … 59m
+        const h = ms / 3600000            // hours left (fractional)
+        if (h < 24) return i18n("%1h", Math.ceil(h))         // 1h … 24h
+        return i18n("%1d", Math.ceil(ms / 86400000))         // 1d … 7d
+    }
     function fmtAgo(t) {
         if (!t) return i18n("never")
         const s = Math.max(0, Math.round((now - t) / 1000))
@@ -223,55 +248,91 @@ PlasmoidItem {
     }
 
     // ---- compact representation (the panel face) ----------------------------
+    // Classic look: [countdown] [chunky rounded-rectangle bar] [percentage].
+    // Each label is centered in a fixed-width column, so the bar stays put and
+    // the numbers line up row-to-row regardless of digit count.
     compactRepresentation: MouseArea {
         id: compact
         onClicked: root.expanded = !root.expanded
 
-        Layout.minimumWidth: Kirigami.Units.gridUnit * 3
-        Layout.preferredWidth: Kirigami.Units.gridUnit * 4
+        // 30 + 4 + 80 + 4 + 36 = 154 content + 8 padding = 162.
+        Layout.minimumWidth: 162
+        Layout.preferredWidth: 162
 
         // Dim the bars when data is stale or erroring; badge explains why.
         opacity: (root.stale || (root.errorType && !root.hasData)) ? 0.5 : 1.0
 
         ColumnLayout {
             anchors.centerIn: parent
-            width: parent.width - Kirigami.Units.smallSpacing * 2
-            spacing: Kirigami.Units.smallSpacing / 2
+            spacing: 4
 
             Repeater {
+                // id drives the per-bar color (green session / blue weekly);
+                // full is the max-window label shown before a limit is first
+                // used (the API reports no reset time until then).
                 model: [
-                    { tag: "5h", bucket: root.sessionBucket },
-                    { tag: "7d", bucket: root.weeklyBucket },
+                    { id: "five_hour", bucket: root.sessionBucket, full: "5h" },
+                    { id: "seven_day", bucket: root.weeklyBucket, full: "7d" },
                 ]
                 delegate: RowLayout {
-                    spacing: Kirigami.Units.smallSpacing
+                    spacing: 4
+
+                    // Left: time left on this limit, centered in its column.
+                    // Falls back to the full window ("5h"/"7d") when unused.
                     Text {
-                        text: modelData.tag
-                        color: Kirigami.Theme.textColor
-                        opacity: 0.7
-                        font.pixelSize: Math.max(8, compact.height * 0.28)
+                        text: root.fmtCompactCountdown(
+                                  modelData.bucket ? modelData.bucket.resets_at : null)
+                              || modelData.full
+                        color: root.panelTextColor()
+                        font.pixelSize: 12
+                        font.bold: true
+                        font.family: "Noto Serif"
+                        Layout.alignment: Qt.AlignVCenter
+                        Layout.preferredWidth: 30
+                        Layout.fillWidth: false
+                        horizontalAlignment: Text.AlignHCenter
                     }
-                    // Track + fill: a slim rounded bar drawn by hand —
-                    // lighter than a full ProgressBar control in a panel.
+
+                    // Center: chunky rounded-rectangle bar (track + fill).
                     Item {
-                        Layout.fillWidth: true
-                        height: Math.max(4, compact.height * 0.18)
+                        implicitWidth: 80
+                        Layout.preferredWidth: 80
+                        Layout.fillWidth: false
+                        height: 15
+                        Layout.alignment: Qt.AlignVCenter
                         // translucent track…
                         Rectangle {
                             anchors.fill: parent
-                            radius: height / 2
-                            color: Kirigami.Theme.textColor
-                            opacity: 0.25
+                            radius: 4
+                            color: root.panelTextColor()
+                            opacity: 0.15
                         }
                         // …with a colored fill on top
                         Rectangle {
                             height: parent.height
-                            radius: height / 2
+                            radius: 4
                             width: parent.width *
                                 Math.min(1, (modelData.bucket ? modelData.bucket.pct : 0) / 100)
-                            color: root.barColor(modelData.bucket ? modelData.bucket.pct : 0)
+                            color: root.barColor(
+                                modelData.bucket ? modelData.bucket.pct : 0,
+                                root.normalColorFor(modelData.id))
                             Behavior on width { NumberAnimation { duration: 300 } }
                         }
+                    }
+
+                    // Right: percentage, centered in its column.
+                    Text {
+                        text: modelData.bucket
+                            ? Math.round(modelData.bucket.pct) + "%"
+                            : "–%"
+                        color: root.panelTextColor()
+                        font.pixelSize: 12
+                        font.bold: true
+                        font.family: "Noto Serif"
+                        Layout.alignment: Qt.AlignVCenter
+                        Layout.preferredWidth: 36
+                        Layout.fillWidth: false
+                        horizontalAlignment: Text.AlignHCenter
                     }
                 }
             }
