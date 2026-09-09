@@ -1,12 +1,13 @@
 # Claudometer
 
+![Claudometer — panel meters and popup](screenshots/claudometer.png)
+
 Claude AI usage limits at a glance, as a native KDE Plasma 6 widget.
 
 Two slim meters on your panel show your **5-hour session** and **7-day weekly**
 limits. Hover for a tooltip with percentages and reset countdowns; click for the
-full breakdown (including per-model buckets and pay-per-use credits, if your
-account has them). Desktop notifications fire when you cross 70% / 90%
-(configurable).
+full breakdown (plus pay-per-use credits, if your account has them). Desktop
+notifications fire when you cross 70% / 90% (configurable).
 
 ## Design
 
@@ -26,8 +27,11 @@ widget Timer → runs bundled claudometer.py → JSON on stdout → widget rende
   disabled, and the popup shows the countdown, until the cooldown clears.
 - Default poll interval is 5 minutes: the usage endpoint is rate-limited and a
   5-hour / 7-day meter doesn't need finer resolution.
-- Colors follow your Plasma theme by default; custom colors are available in
-  settings with native color pickers.
+- Ships with a classic palette — green session bar, blue weekly bar, orange
+  warning and red critical states, white text. Every color is editable in
+  settings via native KDE color pickers.
+
+![Appearance settings](screenshots/settings-appearance.png)
 
 ## How it gets your usage
 
