@@ -1,98 +1,112 @@
 # Claudometer
 
+Claude usage meters that live in your KDE Plasma 6 panel — because alt-tabbing
+to a website to see how much runway you have left is a workflow bug.
+
 ![Claudometer — panel meters and popup](screenshots/claudometer.png)
 
-Claude AI usage limits at a glance, as a native KDE Plasma 6 widget.
+Two bars, always visible: your **5-hour session limit** (green) and your
+**weekly limit** (blue). Each row shows time remaining until reset, a fill
+bar, and the exact percentage. Click for a popup with full-size meters,
+pay-per-use credit tracking (if your account has it enabled), and a
+manual-refresh button. Desktop notifications fire when you cross warning and
+critical thresholds — once per crossing, not once per poll.
 
-Two slim meters on your panel show your **5-hour session** and **7-day weekly**
-limits. Hover for a tooltip with percentages and reset countdowns; click for the
-full breakdown (plus pay-per-use credits, if your account has them). Desktop
-notifications fire when you cross 70% / 90% (configurable).
+## How it works
 
-## Design
+Two pieces, one clean seam:
 
-The entire app is **one self-contained plasmoid package**. No daemon, no
-systemd service, no IPC files, no pip dependencies.
+- **A QML plasmoid** owns all state and rendering: the compact panel bars,
+  the popup, tooltips, and notification latching.
+- **A Python helper** (stdlib only — nothing to `pip install`) runs on a
+  timer, fetches usage from Anthropic's OAuth usage endpoint, and prints
+  exactly one JSON envelope to stdout. That JSON is the entire interface
+  between the two.
 
-```
-widget Timer → runs bundled claudometer.py → JSON on stdout → widget renders
-```
+The helper finds your credentials wherever they already are — no API key to
+paste, no configuration:
 
-- The widget polls only while it exists. Remove the widget, polling stops.
-- "Refresh" just runs the helper again — no trigger files.
-- The popup refreshes automatically when opened (throttled).
-- Rate-limited (HTTP 429)? The widget reads the server's `Retry-After` header
-  and waits exactly that long (plus a small margin) before trying again — so it
-  can never re-trip the limit by retrying too early. The refresh button is
-  disabled, and the popup shows the countdown, until the cooldown clears.
-- Default poll interval is 5 minutes: the usage endpoint is rate-limited and a
-  5-hour / 7-day meter doesn't need finer resolution.
-- Ships with a classic palette — green session bar, blue weekly bar, orange
-  warning and red critical states, white text. Every color is editable in
-  settings via native KDE color pickers.
+1. **Claude Code**: reads the CLI's credentials file directly.
+2. **Claude Desktop**: the token is encrypted at rest with Chromium's
+   OSCrypt v11 scheme. The helper fetches the Safe Storage password from
+   KWallet over D-Bus, derives the AES key with PBKDF2, and decrypts the
+   token cache via the `openssl` CLI.
 
-![Appearance settings](screenshots/settings-appearance.png)
+If both exist, the freshest non-expired token wins.
 
-## How it gets your usage
+## Built to be a polite API citizen
 
-Anthropic's `https://api.anthropic.com/api/oauth/usage` endpoint reports
-utilization percentages per limit bucket. It needs an OAuth token, which the
-helper borrows from whichever Claude app you already use (it never refreshes
-or rotates tokens — it only reads):
+The usage endpoint is rate-limited, and repeatedly sending a dead token reads
+as credential abuse and earns real penalties. The helper takes that
+seriously:
 
-1. **Claude Code**: `~/.claude/.credentials.json` (plaintext, mode 600).
-2. **Claude Desktop**: `~/.config/Claude/config.json` holds the token
-   encrypted with Chromium's OSCrypt v11 scheme. The helper fetches the
-   "Chromium Safe Storage" password from KWallet over D-Bus, derives the AES
-   key with PBKDF2 (Python stdlib), and decrypts via the `openssl` CLI.
+- **Shared cache.** A successful fetch is cached for 30 seconds, so several
+  widget instances polling on the same tick make one HTTP request between
+  them.
+- **429s are honored exactly.** The server's `Retry-After` is persisted to
+  disk, survives `plasmashell` restarts, is shared across instances, and
+  gates even the manual refresh button — you cannot re-trip a rate limit by
+  clicking impatiently.
+- **401s trigger a cooldown, not a retry loop.** A rejected token is
+  fingerprinted and benched for 10 minutes — but the cooldown lifts early the
+  moment a *different* token appears on disk (i.e. you signed in again).
+- **Zombie tokens are quarantined.** Claude Desktop's cache migration leaves
+  behind revoked tokens with expiry dates up to a year out. Naively picking
+  "freshest expiry" would choose a corpse every time; the helper prefers the
+  V2 cache outright and only falls back when it's absent.
 
-Whichever token is freshest wins.
-
-> **Note** (the price of zero pip dependencies): `openssl enc -K` briefly
-> exposes the derived AES key in the process list while decrypting. On a
-> single-user desktop this is moot — any local process could derive the same
-> key from KWallet — but you should know it's there.
-
-> **Caveat**: the usage endpoint and its `anthropic-beta: oauth-2025-04-20`
-> header are undocumented and could change without notice. If the widget
-> suddenly shows an HTTP error, that's the first suspect.
-
-## Requirements
-
-KDE Plasma 6, Python 3.10+, `openssl`, `qdbus6`, `notify-send` — all standard
-on a Plasma distro. Plus a signed-in Claude Desktop or Claude Code.
+Errors degrade gracefully in the UI: stale data dims the bars and says how
+old it is, a cooldown shows a live countdown, and a fresh install with no
+data shows a placeholder instead of bars pretending everything is fine.
 
 ## Install
 
 ```sh
+git clone https://github.com/Trixles/claudometer.git
+cd claudometer
 ./install.sh
 ```
 
-Then right-click your panel → *Add Widgets* → **Claudometer**.
+Then right-click your panel → **Add Widgets** → **Claudometer**. The script
+wraps `kpackagetool6` and handles install vs. upgrade automatically.
 
-To remove:
+**Requirements:** KDE Plasma 6, Python 3, and a Claude subscription signed in
+via Claude Code or Claude Desktop. Reading Desktop tokens additionally uses
+`openssl` and `qdbus6`/KWallet, both stock on a Plasma system.
+
+## Configuration
+
+Everything lives in the widget's settings dialog:
+
+- **General** — polling interval (default 300 s; the data changes slowly, so
+  the default is deliberately gentle), notification toggle, and the warning /
+  critical thresholds (70% / 90%).
+- **Appearance** — every color is editable: session and weekly bar colors,
+  warning and critical override colors, and the panel text.
+
+![Appearance settings](screenshots/settings-appearance.png)
+
+## Security notes
+
+- The Desktop-token decryption passes the AES key to `openssl` via argv,
+  where it is briefly visible in `/proc`. On a single-user desktop this is an
+  accepted trade-off: any local process could re-derive the same key from the
+  KWallet password anyway.
+- Desktop notifications are built from fixed strings and integer percentages
+  only — no API-controlled text ever reaches the shell, so command injection
+  through that path is structurally impossible.
+- The helper talks to exactly one endpoint, over HTTPS, read-only.
+
+## Tests
+
+The helper's parsing and decision logic is covered by unit tests
+(response parsing, `Retry-After` handling, token selection, cache/cooldown
+decisions):
 
 ```sh
-kpackagetool6 -t Plasma/Applet -r com.github.trixles.claudometer
+python -m pytest tests/
 ```
 
-## Migrating from Claude Usage Tracker (the old widget)
+## License
 
-The old version ran a systemd daemon that polls the same rate-limited
-endpoint — don't run both. To retire it completely:
-
-```sh
-systemctl --user disable --now claude-usage-tracker.service
-rm ~/.config/systemd/user/claude-usage-tracker.service
-kpackagetool6 -t Plasma/Applet -r com.github.trixles.claudeusagetracker
-rm -r ~/.local/share/cut
-rm ~/.config/environment.d/cut.conf
-```
-
-## Development
-
-```sh
-python3 -m unittest discover tests          # unit tests (stdlib only)
-python3 plasmoid/contents/scripts/claudometer.py --debug | jq   # live helper run
-./install.sh                                # install/upgrade the widget
-```
+MIT.
