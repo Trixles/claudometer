@@ -3,7 +3,9 @@
 Claude usage meters that live in your KDE Plasma 6 panel — because alt-tabbing
 to a website to see how much runway you have left is a workflow bug.
 
-![Claudometer — panel meters and popup](screenshots/claudometer.png)
+<p align="center">
+  <img src="screenshots/claudometer.png" alt="Claudometer — panel meters and popup">
+</p>
 
 Two bars, always visible: your **5-hour session limit** (green) and your
 **weekly limit** (blue). Each row shows time remaining until reset, a fill
